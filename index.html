@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Wordle Next-Gen Custom 5-Letter</title>
+<style>
+:root {
+  --bg: #121213;
+  --text: #ffffff;
+  --tile-border: #ec1616;
+  --key: #818384;
+  --absent: #3a3a3c;
+  --present: #b59f3b;
+  --correct: #538d4e;
+  --panel: #1f1f20;
+}
+body.light {
+  --bg: #ffffff;
+  --text: #000000;
+  --tile-border: #000000;
+  --key: #d3d6da;
+  --absent: #787c7e;
+  --panel: #f3f3f3;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: background 0.3s, color 0.3s;
+}
+
+/* ---------- HEADER ---------- */
+header {
+  width: 100%;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+h1 { letter-spacing: 4px; margin: 0; }
+.header-buttons button {
+  background: var(--panel);
+  color: var(--text);
+  border: none;
+  padding: 8px 14px;
+  margin-left: 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+}
+
+/* ---------- BOARD ---------- */
+#board {
+  display: grid;
+  grid-template-rows: repeat(6, 1fr);
+  gap: 8px;
+  margin-top: 20px;
+}
+.row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr); /* 5 letters now */
+  gap: 8px;
+}
+.tile { width: 62px; height: 62px; perspective: 800px; }
+.tile-inner {
+  width: 100%; height: 100%; border-radius: 16px;
+  border: 2px solid var(--tile-border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px; font-weight: 700; text-transform: uppercase;
+  background: var(--bg);
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+}
+.flip .tile-inner { transform: rotateX(180deg); }
+.front, .back { position: absolute; inset:0; display:flex; align-items:center; justify-content:center; backface-visibility:hidden; }
+.back { transform: rotateX(180deg); color:white; border-radius:16px; }
+.correct { background: var(--correct); }
+.present { background: var(--present); }
+.absent  { background: var(--absent); }
+
+/* ---------- KEYBOARD ---------- */
+#keyboard { margin-top: 24px; }
+.key-row { display: flex; justify-content: center; margin-bottom: 6px; }
+.key {
+  background: var(--key); color: var(--text);
+  border: none; margin: 4px; padding: 12px 14px;
+  border-radius: 14px; font-weight: 700; cursor: pointer;
+}
+.key.wide { padding: 12px 20px; }
+.key.correct { background: var(--correct); color:white; }
+.key.present { background: var(--present); color:white; }
+.key.absent  { background: var(--absent); color:white; }
+
+/* ---------- STREAK MODAL ---------- */
+#modal {
+  position: fixed; inset:0;
+  background: rgba(0,0,0,0.5);
+  display: none; align-items:center; justify-content:center;
+}
+#modal.show { display:flex; }
+.modal-content {
+  background: var(--panel); padding:20px; border-radius:24px;
+  width: 320px; animation: popIn 0.3s ease;
+}
+@keyframes popIn { from{transform:scale(0.8);opacity:0;} to{transform:scale(1);opacity:1;} }
+.calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; margin-top:16px; }
+.day { height:36px; border-radius:12px; background:var(--tile-border);
+  display:flex; align-items:center; justify-content:center; font-size:12px; }
+.day.solved { background: var(--correct); color:white; }
+.day.today { outline: 2px solid var(--present); }
+
+/* ---------- CUSTOM WORD POPUP ---------- */
+#customWordPopup {
+  position: fixed; top: 60px; right: 20px;
+  width: 320px; padding: 16px; background: var(--panel);
+  border-radius: 20px; box-shadow:0 4px 12px rgba(0,0,0,0.25);
+  display: none; flex-direction: column; gap:8px;
+}
+#customWordPopup h3 { margin: 0; text-align:center; }
+#customWordPopup input {
+  width: 100%; padding: 8px; font-size: 20px; border-radius:12px; border:1px solid var(--tile-border);
+  text-transform: uppercase; letter-spacing: 4px; text-align:center; background: var(--bg); color: var(--text);
+}
+#customWordPopup button {
+  border-radius: 999px; border:none; padding:10px; cursor:pointer; background: var(--correct); color:white; font-weight:700;
+}
+</style>
+</head>
+<body>
+
+<header>
+<h1>WORDLE</h1>
+<div class="header-buttons">
+  <button onclick="toggleMode()">🌗</button>
+  <button onclick="openStreak()">🔥 Streak</button>
+  <button onclick="showCustomPopup()">📝</button>
+</div>
+</header>
+
+<div id="board"></div>
+<div id="keyboard"></div>
+
+<!-- STREAK MODAL -->
+<div id="modal" onclick="closeStreak(event)">
+  <div class="modal-content">
+    <h3>🔥 Daily Streak</h3>
+    <p id="streakText"></p>
+    <div class="calendar" id="calendar"></div>
+  </div>
+</div>
+
+<!-- CUSTOM WORD POPUP -->
+<div id="customWordPopup">
+  <h3>Enter a 5-letter word</h3>
+  <input type="text" id="customWordInput" maxlength="5" placeholder="ABCDE">
+  <button onclick="submitCustomWord()">Submit Word</button>
+</div>
+
+<script>
+/* ---------- WORD LIST ---------- */
+const DEFAULT_WORDS=["apple","grape","brick","plane","chair","smile","candy","robot"];
+let customWord = localStorage.getItem("customWord");
+let today = Math.floor(Date.now()/86400000);
+let answer = customWord ? customWord : DEFAULT_WORDS[today % DEFAULT_WORDS.length];
+
+let row=0,col=0,gameOver=false;
+const boardEl=document.getElementById("board");
+const board=[];
+
+const data=JSON.parse(localStorage.getItem("wordleData")||"{}"); 
+data.days??={}; data.streak??=0; data.lastWin??=null;
+
+/* ---------- BOARD ---------- */
+for(let r=0;r<6;r++){
+  const rowEl=document.createElement("div");
+  rowEl.className="row";
+  const tiles=[];
+  for(let c=0;c<5;c++){ // 5 letters now
+    const tile=document.createElement("div");
+    tile.className="tile";
+    tile.innerHTML=`<div class="tile-inner"><div class="front"></div><div class="back"></div></div>`;
+    rowEl.appendChild(tile);
+    tiles.push(tile);
+  }
+  boardEl.appendChild(rowEl);
+  board.push(tiles);
+}
+
+/* ---------- KEYBOARD ---------- */
+/* ---------- KEYBOARD ---------- */
+const layout = [
+  ["Q","W","E","R","T","Y","U","I","O","P"],
+  ["A","S","D","F","G","H","J","K","L"],
+  ["ENTER","Z","X","C","V","B","N","M","⌫"]
+];
+
+const keyboard = document.getElementById("keyboard");
+
+layout.forEach(line => {
+  const rowEl = document.createElement("div");
+  rowEl.className = "key-row";
+
+  line.forEach(k => {
+    const key = document.createElement("button");
+
+    key.className = "key";
+
+    if (k === "ENTER" || k === "⌫") {
+      key.classList.add("wide");
+    }
+
+    key.textContent = k === "⌫" ? "←" : k;
+    key.onclick = () => press(k);
+
+    rowEl.appendChild(key);
+  });
+
+  keyboard.appendChild(rowEl);
+});
+
+/* ---------- INPUT ---------- */
+function press(k){
+  if(gameOver) return;
+  if(k==="ENTER") return col===5 && reveal();
+  if(k==="⌫" && col>0) board[row][--col].querySelector(".front").textContent="";
+  if(/^[A-Z]$/.test(k) && col<5) board[row][col++].querySelector(".front").textContent=k;
+}
+
+/* ---------- REVEAL ---------- */
+function reveal(){
+  const guess=board[row].map(t=>t.querySelector(".front").textContent.toLowerCase()).join("");
+  if(guess.length!==5) return;
+  let arr = answer.split("");
+  board[row].forEach((tile,i)=>{
+    setTimeout(()=>{
+      tile.classList.add("flip");
+      const back = tile.querySelector(".back");
+      let state="absent";
+      if(guess[i]===answer[i]){state="correct";arr[i]=null;}
+      else if(arr.includes(guess[i])){state="present";arr[arr.indexOf(guess[i])]=null;}
+      back.textContent = guess[i].toUpperCase();
+      back.className = `back ${state}`;
+      updateKey(guess[i],state);
+    }, i*300);
+  });
+  setTimeout(()=>{
+    if(guess===answer) win();
+    else if(++row===6) gameOver=true;
+    col=0;
+  }, 1800);
+}
+
+function win(){gameOver=true;data.days[today]=true;if(data.lastWin===today-1)data.streak++;else data.streak=1;data.lastWin=today;localStorage.setItem("wordleData",JSON.stringify(data));}
+
+function updateKey(letter,state){
+  document.querySelectorAll(".key").forEach(k=>{
+    if(k.textContent.toLowerCase()===letter){
+      if(k.classList.contains("correct")) return;
+      if(k.classList.contains("present") && state==="absent") return;
+      k.classList.remove("absent","present","correct");
+      k.classList.add(state);
+    }
+  });
+}
+
+/* ---------- STREAK ---------- */
+function openStreak(){document.getElementById("modal").classList.add("show");document.getElementById("streakText").textContent=`Current streak: ${data.streak} 🔥`;const cal=document.getElementById("calendar");cal.innerHTML="";for(let i=today-27;i<=today;i++){const d=document.createElement("div");d.className="day";if(data.days[i])d.classList.add("solved");if(i===today)d.classList.add("today");d.textContent=new Date(i*86400000).getDate();cal.appendChild(d);}}
+function closeStreak(e){if(e.target.id==="modal") e.target.classList.remove("show");}
+
+/* ---------- CUSTOM WORD POPUP ---------- */
+function showCustomPopup(){document.getElementById("customWordPopup").style.display="flex";}
+function submitCustomWord(){
+  const val = document.getElementById("customWordInput").value.trim().toLowerCase();
+  if(val.length!==5){alert("Word must be 5 letters"); return;}
+  localStorage.setItem("customWord", val);
+  answer = val;
+  document.getElementById("customWordPopup").style.display="none";
+  alert("Custom word saved! Now someone else can try to guess it.");
+}
+
+/* ---------- MODE ---------- */
+function toggleMode(){document.body.classList.toggle("light");localStorage.setItem("mode",document.body.classList.contains("light"));}
+if(localStorage.getItem("mode")==="true") document.body.classList.add("light");
+
+/* ---------- PHYSICAL KEYBOARD ---------- */
+document.addEventListener("keydown",e=>{
+  if(e.key==="Enter") press("ENTER");
+  else if(e.key==="Backspace") press("⌫");
+  else if(/^[a-z]$/i.test(e.key)) press(e.key.toUpperCase());
+});
+</script>
+</body>
+</html>
